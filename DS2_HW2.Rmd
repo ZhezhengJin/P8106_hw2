@@ -36,6 +36,11 @@ knitr::opts_chunk$set(
 library(tidyverse)
 library(caret)
 library(tidymodels)
+library(earth)
+library(splines)
+library(mgcv)
+library(pdp)
+library(bayesQR)
 ```
 
 ```{r}
@@ -54,13 +59,22 @@ testData <- data[-indexTrain, ]
 
 The "College" dataset contains `r ncol(data)` columns and `r nrow(data)` observations after omitting the `college` variable. Then we partition the dataset into two parts: training data (80%) and test data (20%), where the training data and test data contains `r nrow(trainData)` and `r nrow(testData)` rows, respectively.
 
+```{r}
+# matrix of predictors 
+x <- model.matrix(outstate~.,trainData)[,-1]
+x2 <- model.matrix(outstate~.,testData)[,-1]
+
+# 10-fold cv on best
+ctrl1 <- trainControl(method = "cv", number = 10)
+```
+
+
 ## (a)  smoothing spline models 
 
 ```{r}
 perc_alumni.grid <- seq(from =1, to =65,by =1)
 
-# Fit smoothing spline models using perc.alumni as the only predictor of Outstate for
-# a range of degrees of freedom
+# Fit smoothing spline models using perc.alumni as the only predictor of Outstate for a range of degrees of freedom
 # write a function to apply multiple df's to smoothing spline
 ss.data.func <- function(trainData, perc_alumni.grid, df_seq) {
   ss.list <- lapply(df_seq, function(df) {
@@ -81,8 +95,6 @@ p <- ggplot(data = trainData, aes(x = perc_alumni, y = outstate)) +
 
 # degree of freedom obtained by generalized cross-validation
 fit.ss <- smooth.spline(trainData$perc_alumni, trainData$outstate)
-# degree of freedom obtained by generalized
-# cross-validation
 fit.ss$df
 
 pred.ss <- predict(fit.ss, x = perc_alumni.grid)
@@ -94,7 +106,7 @@ p + geom_line(aes(x = perc_alumni, y = pred), data = pred.ss.df,
               color = rgb(.8, .1, .1, 1)) + theme_bw()
 ```
 
-
+We can see from the plot that the curve is asymptotically to a line with degree of freedom decreasing.  The appropriate degree of freedom for the model I choose is the df obtained by generalized cross-validation: `r fit.ss$df`, and we can see the resulting fits curve in red is pretty smooth (almost a line) which means the model is less sensitive to noise in the data. The out-of-state tuition `outstate` increases by the percentage of alumni who donate `perc.alumni`. Therefore, the criteria for determining the best choice of degree of freedom would include minimization of the generalized cross-validation score. 
 
 ## (b)  MARS
 
@@ -130,17 +142,15 @@ mars.test.error <- mean((mars.pred - testData$outstate)^2)
 mars.test.error
 ```
 
-
+The final model is
+$$outstate=21174.4471-0.5810H(15622-expend)-28.9147H(83-grad\_rate)-0.8783H(5318-room\_board)$$ 
+$$-1.2010H(f\_undergrad-1362)+0.3331H(apps-7875)-0.6461H(7875-apps)$$
+$$+0.8936H(f\_undergrad-4772)+1.0816H(1345-personal)-90.1638H(15-perc\_alumni)$$
+$$+24.7242H(terminal-69)-0.8752H(1577-accept)$$ The partial dependence plot shows a linear increasing of `outstate` as `perc_alumni` increases with a cut point at 15 pct. alumni who donate, holding other variables constant. Also, the plot of `perc_alumni` and `apps` is also shown to visualize their impact on the outcome `outstate`. The test error is `r mars.test.error`.
 
 ## (c)  GAM
 
 ```{r}
-# matrix of predictors 
-x <- model.matrix(outstate~.,trainData)[,-1]
-x2 <- model.matrix(outstate~.,testData)[,-1]
-
-ctrl1 <- trainControl(method = "cv", number = 10)
-
 # Fit a generalized additive model (GAM) using all the predictors
 set.seed(80)
 gam.fit <- train(x, trainData$outstate,
@@ -162,7 +172,7 @@ gam.test.error <- mean((gam.pred - testData$outstate)^2)
 gam.test.error
 ```
 
-
+The GAM model includes all the predictors. There is no bivariate function in the model, which means no interaction between predictors. The plot shows the 16 predictors (from left to the right, from top to the bottom) `perc_alumni`, `terminal`, `books`, `ph_d`, `top10perc`, `grad_rate`, `top25perc`, `s_f_ratio`, `personal`, `p_undergrad`, `enroll`, `room_board`, `accept`, `f_undergrad`, `apps`, `expend`. We can see some from the plots that some predictors show obvious nonlinear function terms such as `ph_d`, `accept`, `f_undergrad`, `apps`, `expend`. Also, the credible intervals are generally narrow on each plot which means the uncertainty is well controlled at each predictor, except at `accept` or `f_undergrad` where the intervals both have a large range as the respective predictors increase. The test error is `r gam.test.error`.
 
 ## (d) MARS model & linear model comparison
 
