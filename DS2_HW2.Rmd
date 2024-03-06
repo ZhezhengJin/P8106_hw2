@@ -1,0 +1,41 @@
+---
+title: "Homework 2"
+author: "Zhezheng Jin"
+output:
+  pdf_document:
+    latex_engine: xelatex
+    toc: yes
+    toc_depth: 2
+  html_document:
+    df_print: paged
+    toc: yes
+    toc_depth: '2'
+header-includes:
+- \usepackage{fancyhdr}
+- \usepackage{lipsum}
+- \pagestyle{fancy}
+- \fancyhead[R]{\thepage}
+- \fancypagestyle{plain}{\pagestyle{fancy}}
+editor_options: 
+  chunk_output_type: console
+--- 
+
+\newpage
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, echo = TRUE, message = FALSE, results='hide', warning=FALSE}
+library(ISLR)
+library(glmnet)
+library(caret)
+library(tidymodels)
+library(corrplot)
+library(ggplot2)
+library(plotmo)
+library(ggrepel)
+library(readr)
+```
+
+
