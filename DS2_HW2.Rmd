@@ -64,6 +64,10 @@ The "College" dataset contains `r ncol(data)` columns and `r nrow(data)` observa
 x <- model.matrix(outstate~.,trainData)[,-1]
 x2 <- model.matrix(outstate~.,testData)[,-1]
 
+# vector of response
+y <- trainData$outstate
+y2 <- testData$outstate
+
 # 10-fold cv on best
 ctrl1 <- trainControl(method = "cv", number = 10)
 ```
@@ -72,9 +76,9 @@ ctrl1 <- trainControl(method = "cv", number = 10)
 ## (a)  smoothing spline models 
 
 ```{r}
-perc_alumni.grid <- seq(from =1, to =65,by =1)
+# the range of perc_alumni is [2, 64]
+perc_alumni.grid <- seq(from =2, to =64,by =1)
 
-# Fit smoothing spline models using perc.alumni as the only predictor of Outstate for a range of degrees of freedom
 # write a function to apply multiple df's to smoothing spline
 ss.data.func <- function(trainData, perc_alumni.grid, df_seq) {
   ss.list <- lapply(df_seq, function(df) {
@@ -102,11 +106,12 @@ pred.ss.df <- data.frame(pred = pred.ss$y,
                          perc_alumni = perc_alumni.grid)
 
 # plot the resulting fits
-p + geom_line(aes(x = perc_alumni, y = pred), data = pred.ss.df,
-              color = rgb(.8, .1, .1, 1)) + theme_bw()
+p + geom_line(aes(x = perc_alumni, y = pred), 
+              data = pred.ss.df,color = rgb(.8, .1, .1, 1)) + 
+  theme_bw()
 ```
 
-We can see from the plot that the curve is asymptotically to a line with degree of freedom decreasing.  The appropriate degree of freedom for the model I choose is the df obtained by generalized cross-validation: `r fit.ss$df`, and we can see the resulting fits curve in red is pretty smooth (almost a line) which means the model is less sensitive to noise in the data. The out-of-state tuition `outstate` increases by the percentage of alumni who donate `perc.alumni`. Therefore, the criteria for determining the best choice of degree of freedom would include minimization of the generalized cross-validation score. 
+We can see from the plot that the curve is asymptotically to a line with degree of freedom decreasing.  The appropriate degree of freedom for the model I choose is the df obtained by generalized cross-validation: `r fit.ss$df`, and we can see the resulting fits curve in red is pretty smooth, which means the model is less sensitive to noise in the data. The out-of-state tuition `outstate` increases by the percentage of alumni who donate `perc.alumni`. Therefore, the criteria for determining the best choice of degree of freedom would include minimization of the generalized cross-validation score. 
 
 ## (b)  MARS
 
@@ -115,7 +120,7 @@ mars_grid <- expand.grid(degree = 1:3,
                          nprune = 2:25)
 
 set.seed(80)
-mars.fit <- train(x, trainData$outstate,
+mars.fit <- train(x, y,
                   method = "earth",
                   tuneGrid = mars_grid,
                   trControl = ctrl1)
@@ -127,33 +132,39 @@ mars.fit$bestTune
 coef(mars.fit$finalModel)
 
 # Present the partial dependence plot of an arbitrary predictor
-p1 <- pdp::partial(mars.fit, pred.var = c("perc_alumni"), grid.resolution = 10) %>% autoplot()
+p1 <- pdp::partial(mars.fit, pred.var = c("perc_alumni"), grid.resolution = 10) %>%
+  autoplot()
 
-p2 <- pdp::partial(mars.fit, pred.var = c("perc_alumni", "apps"), 
+p2 <- pdp::partial(mars.fit, pred.var =
+                     c("perc_alumni", "apps"), 
                    grid.resolution = 10) %>%
-      pdp::plotPartial(levelplot = FALSE, zlab = "yhat", drape = TRUE, 
-                       screen = list(z = 20, x = -60))
+  pdp::plotPartial(levelplot = FALSE, zlab = "yhat", drape = TRUE, 
+                   screen = list(z = 20, x = -60))
 
 gridExtra::grid.arrange(p1, p2, ncol = 2)
 
 # test error
 mars.pred <- predict(mars.fit, newdata = x2)
-mars.test.error <- mean((mars.pred - testData$outstate)^2)
+mars.test.error <- mean((mars.pred - y2)^2)
 mars.test.error
 ```
 
-The final model is
-$$outstate=21174.4471-0.5810H(15622-expend)-28.9147H(83-grad\_rate)-0.8783H(5318-room\_board)$$ 
-$$-1.2010H(f\_undergrad-1362)+0.3331H(apps-7875)-0.6461H(7875-apps)$$
-$$+0.8936H(f\_undergrad-4772)+1.0816H(1345-personal)-90.1638H(15-perc\_alumni)$$
-$$+24.7242H(terminal-69)-0.8752H(1577-accept)$$ The partial dependence plot shows a linear increasing of `outstate` as `perc_alumni` increases with a cut point at 15 pct. alumni who donate, holding other variables constant. Also, the plot of `perc_alumni` and `apps` is also shown to visualize their impact on the outcome `outstate`. The test error is `r mars.test.error`.
+The regression function is as follow:
+$$ outstate = 9781.69 - 0.706 \cdot h(expend - 15687) - 1310.07 \cdot h(grad\_rate - 83) - 1.258 \cdot h(room\_board - 4310) $$
+$$- 117.44 \cdot h(perc\_alumni - 21) - 0.395 \cdot h(f\_undergrad - 1411) - 1.475 \cdot h(1411 - f\_undergrad) $$
+$$ - 0.654 \cdot h(apps - 7033) + 0.943 \cdot h(personal - 1250) + 4.914 \cdot h(enroll - 910) + 43.21 \cdot h(terminal - 75) $$
+$$ + 1234.14 \cdot h(grad\_rate - 82) + 0.679 \cdot h(expend - 6875) - 1.708 \cdot h(2279 - accept) + 0.877 \cdot h(apps - 3624) $$
+
+The partial dependence plot shows a linear increasing of `outstate` as `perc_alumni` increases with a cut point at about 23 % of alumni who donate, holding other variables constant. Also, the plot of `perc_alumni` and `apps` is also shown to visualize their impact on the outcome `outstate`. 
+
+The test error is `r mars.test.error`.
 
 ## (c)  GAM
 
 ```{r}
-# Fit a generalized additive model (GAM) using all the predictors
+# use all the predictors
 set.seed(80)
-gam.fit <- train(x, trainData$outstate,
+gam.fit <- train(x, y,
                  method = "gam",
                  tuneGrid = data.frame(method = "GCV.Cp", select = TRUE),
                  trControl = ctrl1)
@@ -168,41 +179,42 @@ plot(gam.fit$finalModel)
 
 # test error
 gam.pred <- predict(gam.fit, newdata = x2)
-gam.test.error <- mean((gam.pred - testData$outstate)^2)
+gam.test.error <- mean((gam.pred - y2)^2)
 gam.test.error
 ```
 
-The GAM model includes all the predictors. There is no bivariate function in the model, which means no interaction between predictors. The plot shows the 16 predictors (from left to the right, from top to the bottom) `perc_alumni`, `terminal`, `books`, `ph_d`, `top10perc`, `grad_rate`, `top25perc`, `s_f_ratio`, `personal`, `p_undergrad`, `enroll`, `room_board`, `accept`, `f_undergrad`, `apps`, `expend`. We can see some from the plots that some predictors show obvious nonlinear function terms such as `ph_d`, `accept`, `f_undergrad`, `apps`, `expend`. Also, the credible intervals are generally narrow on each plot which means the uncertainty is well controlled at each predictor, except at `accept` or `f_undergrad` where the intervals both have a large range as the respective predictors increase. The test error is `r gam.test.error`.
+The GAM model includes all the predictors. There is no bivariate function in the model, which means no interaction between predictors. The plot shows the 16 predictors (from left to the right, from top to the bottom) `perc_alumni`, `terminal`, `books`, `ph_d`, `top10perc`, `grad_rate`, `top25perc`, `s_f_ratio`, `personal`, `p_undergrad`, `enroll`, `room_board`, `accept`, `f_undergrad`, `apps`, `expend`. It is quite obvious from the plots that some predictors show  nonlinear terms such as `ph_d`, `accept`, `f_undergrad`, `apps`, `expend`. Also, the credible intervals are generally narrow on each plot which means the uncertainty is well controlled at each predictor, except at `accept` or `f_undergrad` where the intervals both have a large range as the respective predictors increase. 
+
+The test error is `r gam.test.error`.
 
 ## (d) MARS model & linear model comparison
 
 ```{r}
 # Fit the linear model
 set.seed(80)
-lm.fit <- train(x, trainData$outstate, method = "lm", trControl = ctrl1)
+lm.fit <- train(x, y, method = "lm", trControl = ctrl1)
 
 # Test error
 lm.pred <- predict(lm.fit, newdata = x2)
-lm.test.error <- mean((lm.pred - testData$outstate)^2)
+lm.test.error <- mean((lm.pred - y2)^2)
 lm.test.error
 
 # resamples
 resamp <- resamples(list(lm = lm.fit,
-                         mars = mars.fit,
-                         gam = gam.fit))
+                         mars = mars.fit))
 summary(resamp)
 
 # RMSE box-plot between models
 bwplot(resamp, metric = "RMSE")
 ```
 
-Since MARS model has a obvious lower mean RMSE, we prefer the use of MARS model over a linear model when predicting the out-of-state tuition in this data example. 
+Since MARS model has a obvious lower mean RMSE, we prefer to use MARS model over a linear model when predicting the out-of-state tuition in this data example. 
 
 Usually, MARS can outperform linear models, especially when the relationships between predictor variables and the response variable are non-linear. MARS does this by creating piecewise linear models, which can be more flexible than a linear model.
 
-However, whether MARS is a better approach compared to a linear model depends on the specific application and the nature of the data. In some cases, the relationships between predictor variables and the response variable may be linear, in which case a linear model would be more appropriate.
+However, whether MARS is a better approach compared to a linear model depends on the specific application and the nature of the data. In some cases, the relationships between predictors and the response variable may be linear, in which a linear model would be better.
 
-In summary, the choice of modeling technique should be based on the nature of the data and the specific research question being addressed. It may also be useful to compare the performance of different modeling techniques using cross-validation to determine which approach is best for a particular application.
+In summary, the choice of modeling technique should be based on the nature of the data and the specific research questions. It may also be useful to compare the performance of different modeling techniques using cross-validation to determine which approach is the best for a specific application.
 
 
 
