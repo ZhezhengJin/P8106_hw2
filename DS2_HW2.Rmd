@@ -183,7 +183,7 @@ gam.test.error <- mean((gam.pred - y2)^2)
 gam.test.error
 ```
 
-The GAM model includes all the predictors. There is no bivariate function in the model, which means no interaction between predictors. The plot shows the 16 predictors (from left to the right, from top to the bottom) `perc_alumni`, `terminal`, `books`, `ph_d`, `top10perc`, `grad_rate`, `top25perc`, `s_f_ratio`, `personal`, `p_undergrad`, `enroll`, `room_board`, `accept`, `f_undergrad`, `apps`, `expend`. It is quite obvious from the plots that some predictors show  nonlinear terms such as `ph_d`, `accept`, `f_undergrad`, `apps`, `expend`. Also, the credible intervals are generally narrow on each plot which means the uncertainty is well controlled at each predictor, except at `accept` or `f_undergrad` where the intervals both have a large range as the respective predictors increase. 
+The GAM model includes all the predictors. There is no bivariate function in the model, which means no interaction between predictors.The plot shows the 16 predictors (from left to the right, from top to the bottom) perc_alumni, terminal, books, ph_d, top10perc, grad_rate, top25perc, s_f_ratio, personal, p_undergrad, enroll, room_board, accept, f_undergrad, apps, expend. Among these predictors, it seems like there are 8 nonlinear terms: `room_board`, `grad_rate`,`top25perc`,  `p_undergrad`,`enroll`, `f_undergrad`, `apps`, `expend`.  
 
 The test error is `r gam.test.error`.
 
